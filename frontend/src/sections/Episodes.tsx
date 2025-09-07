@@ -140,10 +140,10 @@ const Episodes: React.FC = () => {
 
             {/* Loading/Error States */}
             {loading && (
-              <div className="card p-8 max-w-4xl mx-auto mb-16 text-center text-text-muted">Loading…</div>
+              <div className="bg-dark/50 backdrop-blur-sm rounded-2xl border border-white/60 p-8 max-w-4xl mx-auto mb-16 text-center text-text-muted shadow-xl shadow-white/20">Loading…</div>
             )}
             {error && (
-              <div className="card p-8 max-w-4xl mx-auto mb-16 text-center text-red-400">{error}</div>
+              <div className="bg-dark/50 backdrop-blur-sm rounded-2xl border border-white/60 p-8 max-w-4xl mx-auto mb-16 text-center text-red-400 shadow-xl shadow-white/20">{error}</div>
             )}
           </>
         )}
@@ -155,7 +155,7 @@ const Episodes: React.FC = () => {
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
             transition={{ duration: 0.4, ease: 'easeOut' }}
-            className="card p-8 max-w-4xl mx-auto mb-16"
+            className="bg-dark/50 backdrop-blur-sm rounded-2xl border border-white/60 p-8 max-w-4xl mx-auto mb-16 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl hover:shadow-white/30 hover:bg-dark/60 shadow-xl shadow-white/20"
             style={{ minHeight: '540px' }}
           >
             <div
@@ -205,51 +205,55 @@ const Episodes: React.FC = () => {
                 </div>
               ))}
             </div>
-            {/* Dots */}
-            <div className="flex justify-center gap-2 mt-6">
-              {upcomingEpisodes.map((_, idx) => (
+            {/* Dots - Only show if more than 1 upcoming episode */}
+            {upcomingEpisodes.length > 1 && (
+              <div className="flex justify-center gap-2 mt-6">
+                {upcomingEpisodes.map((_, idx) => (
+                  <button
+                    key={idx}
+                    aria-label={`Go to upcoming ${idx + 1}`}
+                    onClick={() => {
+                      setUpcomingIndex(idx)
+                      const container = upcomingScrollRef.current
+                      const child = container?.children.item(idx) as HTMLElement | null
+                      child?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+                    }}
+                    className={`w-2.5 h-2.5 rounded-full ${idx === upcomingIndex ? 'bg-primary' : 'bg-dark-lighter'}`}
+                  />
+                ))}
+              </div>
+            )}
+            {/* Navigation arrows - Only show if more than 1 upcoming episode */}
+            {upcomingEpisodes.length > 1 && (
+              <div className="flex justify-center gap-4 mt-4">
                 <button
-                  key={idx}
-                  aria-label={`Go to upcoming ${idx + 1}`}
+                  className="btn btn-secondary px-3 py-2"
+                  aria-label="Previous upcoming"
                   onClick={() => {
-                    setUpcomingIndex(idx)
+                    const prev = (upcomingIndex - 1 + upcomingEpisodes.length) % upcomingEpisodes.length
+                    setUpcomingIndex(prev)
                     const container = upcomingScrollRef.current
-                    const child = container?.children.item(idx) as HTMLElement | null
+                    const child = container?.children.item(prev) as HTMLElement | null
                     child?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
                   }}
-                  className={`w-2.5 h-2.5 rounded-full ${idx === upcomingIndex ? 'bg-primary' : 'bg-dark-lighter'}`}
-                />
-              ))}
-            </div>
-            {/* Optional arrows */}
-            <div className="flex justify-center gap-4 mt-4">
-              <button
-                className="btn btn-secondary px-3 py-2"
-                aria-label="Previous upcoming"
-                onClick={() => {
-                  const prev = (upcomingIndex - 1 + upcomingEpisodes.length) % upcomingEpisodes.length
-                  setUpcomingIndex(prev)
-                  const container = upcomingScrollRef.current
-                  const child = container?.children.item(prev) as HTMLElement | null
-                  child?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
-                }}
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <button
-                className="btn btn-secondary px-3 py-2"
-                aria-label="Next upcoming"
-                onClick={() => {
-                  const next = (upcomingIndex + 1) % upcomingEpisodes.length
-                  setUpcomingIndex(next)
-                  const container = upcomingScrollRef.current
-                  const child = container?.children.item(next) as HTMLElement | null
-                  child?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
-                }}
-              >
-                <ChevronRight size={18} />
-              </button>
-            </div>
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  className="btn btn-secondary px-3 py-2"
+                  aria-label="Next upcoming"
+                  onClick={() => {
+                    const next = (upcomingIndex + 1) % upcomingEpisodes.length
+                    setUpcomingIndex(next)
+                    const container = upcomingScrollRef.current
+                    const child = container?.children.item(next) as HTMLElement | null
+                    child?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+                  }}
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            )}
           </motion.div>
         ) : (featuredEpisode && !loading && !error && (
           <motion.div
