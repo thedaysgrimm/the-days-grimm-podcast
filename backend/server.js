@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+// Testing Render auto-deployment with private repository
+
 // Import routes
 const episodesRouter = require('./routes/episodes');
 const blogRouter = require('./routes/blog');
