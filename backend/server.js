@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 5000;
 app.use(cors({
   origin: [
     'http://localhost:3000',
-    'https://the-days-grimm.vercel.app',
+    'https://the-days-grimm-podcast-git-main-thedaysgrimms-projects.vercel.app',
     'https://thedaysgrimm.com',
     'https://www.thedaysgrimm.com'
   ],
