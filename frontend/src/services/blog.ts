@@ -28,7 +28,7 @@ export const fetchRedditBlogPosts = async (limit = 6, options?: { flair?: string
   if (options?.author) params.set('author', options.author);
   if (options?.debug) params.set('debug', '1');
 
-  const apiBase = import.meta.env.PROD ? 'https://the-days-grimm-podcast.onrender.com' : '';
+  const apiBase = import.meta.env.VITE_API_BASE_URL || '';
   const response = await fetch(`${apiBase}/api/blog/reddit?${params.toString()}`);
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
