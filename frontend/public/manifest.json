@@ -4,8 +4,7 @@
   "description": "Indiana's most comical, thrilling, and controversial podcast",
   "theme_color": "#DC2626",
   "background_color": "#1a1a1a",
-  "display": "standalone",
-  "orientation": "portrait-primary",
+  "display": "browser",
   "scope": "/",
   "start_url": "/",
   "icons": [
