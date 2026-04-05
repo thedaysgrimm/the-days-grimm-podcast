@@ -21,7 +21,7 @@ const Episodes: React.FC = () => {
           setEpisodes(data)
           setLoading(false)
         }
-      } catch (err: any) {
+      } catch {
         if (isMounted) {
           setError('Failed to load episodes')
           setLoading(false)
@@ -32,10 +32,10 @@ const Episodes: React.FC = () => {
   }, [])
 
   const featuredEpisode = episodes.find(ep => ep.featured)
-  const upcomingEpisodes = (episodes as any[]).filter(ep => (ep as any).isUpcoming)
+  const upcomingEpisodes = episodes.filter(ep => ep.isUpcoming)
   const allRecentEpisodes = episodes
-    .filter((ep: any) => !ep.isUpcoming)
-    .sort((a: any, b: any) => {
+    .filter(ep => !ep.isUpcoming)
+    .sort((a, b) => {
       const ta = typeof a.sortTimestamp === 'number' ? a.sortTimestamp : Date.parse(a.date || '') || 0
       const tb = typeof b.sortTimestamp === 'number' ? b.sortTimestamp : Date.parse(b.date || '') || 0
       return tb - ta
@@ -166,7 +166,7 @@ const Episodes: React.FC = () => {
               className="flex overflow-x-auto no-scrollbar scroll-smooth gap-0"
               style={{ scrollSnapType: 'x mandatory', touchAction: 'pan-y', height: '100%' }}
             >
-              {upcomingEpisodes.map((ep: any) => (
+              {upcomingEpisodes.map((ep) => (
                 <div key={ep.id} className="w-full shrink-0 px-0" style={{ scrollSnapAlign: 'start' }}>
                   <div className="mb-4 sm:mb-6 text-center">
                     <h4 className="text-2xl sm:text-3xl font-extrabold line-clamp-2">
@@ -281,11 +281,11 @@ const Episodes: React.FC = () => {
 
             <div className="flex flex-wrap gap-3 sm:gap-4 text-text-muted text-sm mb-3 sm:mb-4">
               <span>{featuredEpisode.date}</span>
-              <span>{(featuredEpisode as any).isUpcoming ? 'Upcoming' : featuredEpisode.duration}</span>
+              <span>{featuredEpisode.isUpcoming ? 'Upcoming' : featuredEpisode.duration}</span>
             </div>
             <p className="text-text-secondary mb-5 sm:mb-6 leading-relaxed">{featuredEpisode.description}</p>
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-center">
-              {(featuredEpisode as any).isUpcoming ? (
+              {featuredEpisode.isUpcoming ? (
                 <a href={featuredEpisode.youtubeUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
                   Notify Me
                 </a>

@@ -12,6 +12,7 @@ export interface Episode {
   spotifyUrl: string | null;
   applePodcastUrl: string | null;
   isUpcoming?: boolean;
+  sortTimestamp?: number;
 }
 
 export interface EpisodesResponse {
