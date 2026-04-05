@@ -30,7 +30,7 @@ const Blog: React.FC = () => {
           setDebugInfo(data.debug)
           setLoading(false)
         }
-      } catch (err: any) {
+      } catch {
         if (isMounted) {
           setError('Failed to load blog posts')
           setLoading(false)
