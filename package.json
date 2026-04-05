@@ -4,8 +4,10 @@
   "description": "API testing utility for The Days Grimm website",
   "main": "test-apis.js",
   "scripts": {
+    "install:all": "cd frontend && npm install && cd ../backend && npm install",
+    "build": "cd frontend && npm run build",
     "test:youtube": "node test-apis.js youtube",
-    "test:reddit": "node test-apis.js reddit", 
+    "test:reddit": "node test-apis.js reddit",
     "test:local": "node test-apis.js local",
     "test:all": "node test-apis.js all"
   },
