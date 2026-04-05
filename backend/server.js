@@ -51,7 +51,7 @@ app.use((err, req, res, next) => {
 });
 
 // 404 handler
-app.use('*', (req, res) => {
+app.use('/{*splat}', (req, res) => {
   res.status(404).json({ 
     error: 'Endpoint not found',
     message: `The endpoint ${req.originalUrl} does not exist`
