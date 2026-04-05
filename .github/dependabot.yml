@@ -23,6 +23,13 @@ updates:
     commit-message:
       prefix: "deps(frontend)"
       include: "scope"
+    ignore:
+      - dependency-name: "lucide-react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-plugin-react-hooks"
+        update-types: ["version-update:semver-major"]
     
   # Backend dependencies
   - package-ecosystem: "npm"
