@@ -98,8 +98,7 @@ jobs:
               if not os.path.exists(fname): continue
               content = open(fname).read()
               for m in re.finditer(r'(?im)^\s*(SECRET|TOKEN|KEY|PASSWORD)\w*\s*=\s*"([^"]{8,})"', content):
-                  findings.append({'rule':'wrangler.hardcoded_secret','file':fname,'line':content[:m.start()].count('
-')+1,'matched_var':m.group(1),'severity':'high'})
+                  findings.append({'rule':'wrangler.hardcoded_secret','file':fname,'line':content[:m.start()].count('\n')+1,'matched_var':m.group(1),'severity':'high'})
               if re.search(r'(?im)^\s*workers_dev\s*=\s*true', content):
                   findings.append({'rule':'wrangler.workers_dev_enabled','file':fname,'line':0,'severity':'low'})
           print(json.dumps({'findings': findings}))
