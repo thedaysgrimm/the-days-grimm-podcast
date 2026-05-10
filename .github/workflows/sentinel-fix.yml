@@ -181,7 +181,10 @@ jobs:
           See https://sentinel.whysharon.uk/findings/${{ inputs.finding_id }}.
 
           Co-Authored-By: Sentinel <sentinel@anomalist-enterprise.com>"
-          git push -u origin "$BRANCH"
+          # Sentinel owns sentinel/fix/* branches — force-with-lease keeps
+          # safety against concurrent writers but lets us replace stale prior
+          # attempts.
+          git push -u origin "$BRANCH" --force-with-lease
 
       - name: Open PR
         id: pr
@@ -196,13 +199,21 @@ jobs:
 
           Lane 1 = auto-merges if CI passes. Lane 2 = awaits Approve in dashboard."
 
-          PR_URL=$(gh pr create \
-            --base "$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)" \
-            --head "$BRANCH" \
-            --title "Sentinel: ${{ inputs.finding_title }}" \
-            --body "$PR_BODY" 2>&1 | grep -E "https://github.com" | tail -1)
+          # Reuse an existing open PR for this branch if there is one.
+          EXISTING=$(gh pr list --state open --head "$BRANCH" --json url,number --jq '.[0]' 2>/dev/null || echo '{}')
+          PR_URL=$(echo "$EXISTING" | jq -r .url)
+          PR_NUMBER=$(echo "$EXISTING" | jq -r .number)
+          if [[ -z "$PR_URL" || "$PR_URL" == "null" ]]; then
+            PR_URL=$(gh pr create \
+              --base "$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)" \
+              --head "$BRANCH" \
+              --title "Sentinel: ${{ inputs.finding_title }}" \
+              --body "$PR_BODY" 2>&1 | grep -E "https://github.com" | tail -1)
+            PR_NUMBER=$(echo "$PR_URL" | sed -E 's|.*/pull/([0-9]+).*|\1|')
+          else
+            gh pr edit "$PR_NUMBER" --body "$PR_BODY" >/dev/null 2>&1 || true
+          fi
           echo "PR_URL=$PR_URL" >> "$GITHUB_OUTPUT"
-          PR_NUMBER=$(echo "$PR_URL" | sed -E 's|.*/pull/([0-9]+).*|\1|')
           echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Notify Sentinel
