@@ -54,34 +54,60 @@ jobs:
           git checkout -B "$BRANCH"
           echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
 
-      - name: npm audit fix
+      - name: npm audit fix (non-breaking)
         if: inputs.finding_type == 'dep_vuln' && steps.stack.outputs.has_npm == '1'
         run: |
           npm audit fix --package-lock-only || true
-          if git diff --quiet; then echo "NO_CHANGES=1" >> "$GITHUB_ENV"; fi
+          if git diff --quiet; then echo "NEEDS_FORCE=1" >> "$GITHUB_ENV"; else echo "FIX_KIND=audit-patch" >> "$GITHUB_ENV"; fi
 
       - name: pnpm update
-        if: inputs.finding_type == 'dep_vuln' && steps.stack.outputs.has_pnpm == '1' && env.NO_CHANGES != '1'
+        if: inputs.finding_type == 'dep_vuln' && steps.stack.outputs.has_pnpm == '1' && env.NEEDS_FORCE != '1' && env.FIX_KIND == ''
         run: |
           npm install -g pnpm@latest >/dev/null 2>&1
           if [[ -n "${{ inputs.package_name }}" ]]; then
             pnpm update "${{ inputs.package_name }}" --lockfile-only || true
           fi
-          if git diff --quiet; then echo "NO_CHANGES=1" >> "$GITHUB_ENV"; fi
+          if git diff --quiet; then echo "NEEDS_FORCE=1" >> "$GITHUB_ENV"; else echo "FIX_KIND=pnpm-update" >> "$GITHUB_ENV"; fi
 
       - name: yarn upgrade
-        if: inputs.finding_type == 'dep_vuln' && steps.stack.outputs.has_yarn == '1' && env.NO_CHANGES != '1'
+        if: inputs.finding_type == 'dep_vuln' && steps.stack.outputs.has_yarn == '1' && env.NEEDS_FORCE != '1' && env.FIX_KIND == ''
         run: |
           npm install -g yarn >/dev/null 2>&1
           if [[ -n "${{ inputs.package_name }}" ]]; then
             yarn upgrade "${{ inputs.package_name }}" --silent || true
           fi
-          if git diff --quiet; then echo "NO_CHANGES=1" >> "$GITHUB_ENV"; fi
+          if git diff --quiet; then echo "NEEDS_FORCE=1" >> "$GITHUB_ENV"; else echo "FIX_KIND=yarn-upgrade" >> "$GITHUB_ENV"; fi
+
+      # Lane 2 only — force-install pkg@latest (major bump OK; PR requires approval).
+      - name: Lane 2 — force upgrade to latest (npm)
+        if: env.NEEDS_FORCE == '1' && inputs.lane == 'lane2' && inputs.package_name != '' && steps.stack.outputs.has_npm == '1'
+        run: |
+          npm install "${{ inputs.package_name }}@latest" --package-lock-only --save=false 2>/dev/null \
+            || npm install "${{ inputs.package_name }}@latest" --package-lock-only --legacy-peer-deps --save=false 2>/dev/null \
+            || true
+          if git diff --quiet; then
+            echo "force still no change"
+          else
+            echo "FIX_KIND=force-latest" >> "$GITHUB_ENV"
+            echo "NEEDS_FORCE=" >> "$GITHUB_ENV"
+          fi
+
+      - name: Lane 2 — force upgrade to latest (pnpm)
+        if: env.NEEDS_FORCE == '1' && inputs.lane == 'lane2' && inputs.package_name != '' && steps.stack.outputs.has_pnpm == '1'
+        run: |
+          npm install -g pnpm@latest >/dev/null 2>&1
+          pnpm add "${{ inputs.package_name }}@latest" --lockfile-only 2>/dev/null || true
+          if git diff --quiet; then
+            echo "pnpm force still no change"
+          else
+            echo "FIX_KIND=force-latest-pnpm" >> "$GITHUB_ENV"
+            echo "NEEDS_FORCE=" >> "$GITHUB_ENV"
+          fi
 
       - name: Bail if no changes
-        if: env.NO_CHANGES == '1'
+        if: env.FIX_KIND == ''
         run: |
-          echo "::warning::No automated fix produced changes — likely needs major bump or manual intervention."
+          echo "::warning::No automated fix produced changes — manual intervention required."
           exit 78
 
       - name: Commit + push
@@ -90,6 +116,7 @@ jobs:
           git commit -m "Sentinel: fix ${{ inputs.finding_title }}
 
           Sentinel finding #${{ inputs.finding_id }} (${{ inputs.finding_type }}, ${{ inputs.lane }}).
+          Fix strategy: ${FIX_KIND}.
           See https://sentinel.whysharon.uk/findings/${{ inputs.finding_id }}.
 
           Co-Authored-By: Sentinel <sentinel@anomalist-enterprise.com>"
