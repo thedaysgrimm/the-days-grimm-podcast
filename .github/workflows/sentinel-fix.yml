@@ -78,29 +78,31 @@ jobs:
           fi
           if git diff --quiet; then echo "NEEDS_FORCE=1" >> "$GITHUB_ENV"; else echo "FIX_KIND=yarn-upgrade" >> "$GITHUB_ENV"; fi
 
-      # Lane 2 only — force-install pkg@latest (major bump OK; PR requires approval).
-      - name: Lane 2 — force upgrade to latest (npm)
-        if: env.NEEDS_FORCE == '1' && inputs.lane == 'lane2' && inputs.package_name != '' && steps.stack.outputs.has_npm == '1'
+      # Lane 2 only — `npm audit fix --force` does whatever bumps are needed,
+      # including majors and parent-package upgrades for transitive vulns.
+      # Lane2 PRs require Chris's approval before merging, so this is safe.
+      - name: Lane 2 — npm audit fix --force
+        if: env.NEEDS_FORCE == '1' && inputs.lane == 'lane2' && steps.stack.outputs.has_npm == '1'
         run: |
-          npm install "${{ inputs.package_name }}@latest" --package-lock-only --save=false 2>/dev/null \
-            || npm install "${{ inputs.package_name }}@latest" --package-lock-only --legacy-peer-deps --save=false 2>/dev/null \
-            || true
+          npm audit fix --force --package-lock-only 2>&1 | head -100 || true
           if git diff --quiet; then
-            echo "force still no change"
+            echo "audit fix --force still no change"
           else
-            echo "FIX_KIND=force-latest" >> "$GITHUB_ENV"
+            echo "FIX_KIND=audit-fix-force" >> "$GITHUB_ENV"
             echo "NEEDS_FORCE=" >> "$GITHUB_ENV"
           fi
 
-      - name: Lane 2 — force upgrade to latest (pnpm)
-        if: env.NEEDS_FORCE == '1' && inputs.lane == 'lane2' && inputs.package_name != '' && steps.stack.outputs.has_pnpm == '1'
+      - name: Lane 2 — pnpm update --latest
+        if: env.NEEDS_FORCE == '1' && inputs.lane == 'lane2' && steps.stack.outputs.has_pnpm == '1'
         run: |
           npm install -g pnpm@latest >/dev/null 2>&1
-          pnpm add "${{ inputs.package_name }}@latest" --lockfile-only 2>/dev/null || true
+          if [[ -n "${{ inputs.package_name }}" ]]; then
+            pnpm update "${{ inputs.package_name }}" --latest --lockfile-only 2>/dev/null || true
+          fi
           if git diff --quiet; then
-            echo "pnpm force still no change"
+            echo "pnpm --latest no change"
           else
-            echo "FIX_KIND=force-latest-pnpm" >> "$GITHUB_ENV"
+            echo "FIX_KIND=pnpm-update-latest" >> "$GITHUB_ENV"
             echo "NEEDS_FORCE=" >> "$GITHUB_ENV"
           fi
 
