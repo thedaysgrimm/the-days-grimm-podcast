@@ -204,11 +204,16 @@ jobs:
           PR_URL=$(echo "$EXISTING" | jq -r .url)
           PR_NUMBER=$(echo "$EXISTING" | jq -r .number)
           if [[ -z "$PR_URL" || "$PR_URL" == "null" ]]; then
-            PR_URL=$(gh pr create \
+            CREATE_OUT=$(gh pr create \
               --base "$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)" \
               --head "$BRANCH" \
               --title "Sentinel: ${{ inputs.finding_title }}" \
-              --body "$PR_BODY" 2>&1 | grep -E "https://github.com" | tail -1)
+              --body "$PR_BODY" 2>&1)
+            PR_URL=$(echo "$CREATE_OUT" | grep -E "https://github.com" | tail -1)
+            if [[ -z "$PR_URL" ]]; then
+              echo "::error::gh pr create failed: $CREATE_OUT"
+              exit 1
+            fi
             PR_NUMBER=$(echo "$PR_URL" | sed -E 's|.*/pull/([0-9]+).*|\1|')
           else
             gh pr edit "$PR_NUMBER" --body "$PR_BODY" >/dev/null 2>&1 || true
