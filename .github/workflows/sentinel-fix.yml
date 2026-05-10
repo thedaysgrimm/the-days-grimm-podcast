@@ -20,6 +20,12 @@ on:
       package_name:
         required: false
         default: ""
+      fix_strategy:
+        required: false
+        default: "audit-fix"
+      override_version:
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -54,8 +60,45 @@ jobs:
           git checkout -B "$BRANCH"
           echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
 
+      - name: Strategy override (npm)
+        if: inputs.fix_strategy == 'override' && steps.stack.outputs.has_npm == '1' && inputs.package_name != '' && inputs.override_version != ''
+        env:
+          PKG: ${{ inputs.package_name }}
+          VER: ${{ inputs.override_version }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          pkg = os.environ['PKG']; ver = os.environ['VER']
+          with open('package.json') as f: data = json.load(f)
+          ov = data.setdefault('overrides', {})
+          ov[pkg] = ver
+          with open('package.json', 'w') as f: json.dump(data, f, indent=2); f.write('\n')
+          print(f'Added override: {pkg} → {ver}')
+          PY
+          npm install --package-lock-only --legacy-peer-deps 2>&1 | tail -20 || true
+          if git diff --quiet; then echo "no diff"; else echo "FIX_KIND=override" >> "$GITHUB_ENV"; fi
+
+      - name: Strategy override (pnpm)
+        if: inputs.fix_strategy == 'override' && steps.stack.outputs.has_pnpm == '1' && inputs.package_name != '' && inputs.override_version != ''
+        env:
+          PKG: ${{ inputs.package_name }}
+          VER: ${{ inputs.override_version }}
+        run: |
+          npm install -g pnpm@latest >/dev/null 2>&1
+          python3 - <<'PY'
+          import json, os
+          pkg = os.environ['PKG']; ver = os.environ['VER']
+          with open('package.json') as f: data = json.load(f)
+          pnpm = data.setdefault('pnpm', {})
+          ov = pnpm.setdefault('overrides', {})
+          ov[pkg] = ver
+          with open('package.json', 'w') as f: json.dump(data, f, indent=2); f.write('\n')
+          PY
+          pnpm install --lockfile-only 2>&1 | tail -20 || true
+          if git diff --quiet; then echo "no diff"; else echo "FIX_KIND=override-pnpm" >> "$GITHUB_ENV"; fi
+
       - name: npm audit fix (non-breaking)
-        if: inputs.finding_type == 'dep_vuln' && steps.stack.outputs.has_npm == '1'
+        if: inputs.finding_type == 'dep_vuln' && inputs.fix_strategy == 'audit-fix' && steps.stack.outputs.has_npm == '1'
         run: |
           npm audit fix --package-lock-only || true
           if git diff --quiet; then echo "NEEDS_FORCE=1" >> "$GITHUB_ENV"; else echo "FIX_KIND=audit-patch" >> "$GITHUB_ENV"; fi
@@ -105,6 +148,22 @@ jobs:
             echo "FIX_KIND=pnpm-update-latest" >> "$GITHUB_ENV"
             echo "NEEDS_FORCE=" >> "$GITHUB_ENV"
           fi
+
+      - name: Notify Sentinel — no auto-fix available
+        if: env.FIX_KIND == ''
+        env:
+          INGEST_SECRET: ${{ secrets.SENTINEL_INGEST_SECRET }}
+        run: |
+          BODY=$(jq -n \
+            --arg fid "${{ inputs.finding_id }}" \
+            --arg lane "${{ inputs.lane }}" \
+            --arg reason "audit-fix exhausted (no non-breaking patch + force produced no diff)" \
+            '{finding_id: $fid|tonumber, lane: $lane, reason: $reason}')
+          SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$INGEST_SECRET" -hex | sed 's/^.*= //')
+          curl -s -X POST -H "Content-Type: application/json" \
+            -H "X-Sentinel-Signature: $SIG" \
+            --data-binary "$BODY" \
+            "https://sentinel.whysharon.uk/api/internal/fix_no_changes" || true
 
       - name: Bail if no changes
         if: env.FIX_KIND == ''
