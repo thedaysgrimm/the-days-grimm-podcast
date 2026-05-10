@@ -1,8 +1,8 @@
-# Sentinel — fix caller workflow
+# Sentinel — standalone fix workflow
 #
-# Vendored into every Sentinel-watched repo at .github/workflows/sentinel-fix.yml.
-# Dispatched by the Sentinel Worker when a Lane 1 cron auto-fix or Lane 2 user
-# "Open fix PR" click happens.
+# For cross-org repos that can't `uses:` the AE-private reusable. Vendored
+# verbatim into the repo at .github/workflows/sentinel-fix.yml. Same logic
+# as sentinel-apply-fix.yml but inline.
 
 name: Sentinel — Apply fix
 
@@ -10,19 +10,14 @@ on:
   workflow_dispatch:
     inputs:
       finding_id:
-        description: "Sentinel finding id"
         required: true
       finding_type:
-        description: "Finding type (dep_vuln, sast, etc)"
         required: true
       finding_title:
-        description: "Finding title"
         required: true
       lane:
-        description: "lane1 | lane2"
         required: true
       package_name:
-        description: "Package name (for dep_vuln)"
         required: false
         default: ""
 
@@ -31,13 +26,113 @@ permissions:
   pull-requests: write
 
 jobs:
-  fix:
-    uses: anomalist-enterprise/sentinel/.github/workflows/sentinel-apply-fix.yml@main
-    with:
-      finding_id: ${{ inputs.finding_id }}
-      finding_type: ${{ inputs.finding_type }}
-      finding_title: ${{ inputs.finding_title }}
-      lane: ${{ inputs.lane }}
-      package_name: ${{ inputs.package_name }}
-    secrets:
-      INGEST_SECRET: ${{ secrets.SENTINEL_INGEST_SECRET }}
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "Sentinel"
+          git config user.email "sentinel@anomalist-enterprise.com"
+
+      - name: Detect stack
+        id: stack
+        run: |
+          {
+            echo "has_npm=$([[ -f package-lock.json ]] && echo 1 || echo 0)"
+            echo "has_pnpm=$([[ -f pnpm-lock.yaml ]] && echo 1 || echo 0)"
+            echo "has_yarn=$([[ -f yarn.lock ]] && echo 1 || echo 0)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create fix branch
+        run: |
+          BRANCH="sentinel/fix/${{ inputs.finding_id }}"
+          git checkout -B "$BRANCH"
+          echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
+
+      - name: npm audit fix
+        if: inputs.finding_type == 'dep_vuln' && steps.stack.outputs.has_npm == '1'
+        run: |
+          npm audit fix --package-lock-only || true
+          if git diff --quiet; then echo "NO_CHANGES=1" >> "$GITHUB_ENV"; fi
+
+      - name: pnpm update
+        if: inputs.finding_type == 'dep_vuln' && steps.stack.outputs.has_pnpm == '1' && env.NO_CHANGES != '1'
+        run: |
+          npm install -g pnpm@latest >/dev/null 2>&1
+          if [[ -n "${{ inputs.package_name }}" ]]; then
+            pnpm update "${{ inputs.package_name }}" --lockfile-only || true
+          fi
+          if git diff --quiet; then echo "NO_CHANGES=1" >> "$GITHUB_ENV"; fi
+
+      - name: yarn upgrade
+        if: inputs.finding_type == 'dep_vuln' && steps.stack.outputs.has_yarn == '1' && env.NO_CHANGES != '1'
+        run: |
+          npm install -g yarn >/dev/null 2>&1
+          if [[ -n "${{ inputs.package_name }}" ]]; then
+            yarn upgrade "${{ inputs.package_name }}" --silent || true
+          fi
+          if git diff --quiet; then echo "NO_CHANGES=1" >> "$GITHUB_ENV"; fi
+
+      - name: Bail if no changes
+        if: env.NO_CHANGES == '1'
+        run: |
+          echo "::warning::No automated fix produced changes — likely needs major bump or manual intervention."
+          exit 78
+
+      - name: Commit + push
+        run: |
+          git add -A
+          git commit -m "Sentinel: fix ${{ inputs.finding_title }}
+
+          Sentinel finding #${{ inputs.finding_id }} (${{ inputs.finding_type }}, ${{ inputs.lane }}).
+          See https://sentinel.whysharon.uk/findings/${{ inputs.finding_id }}.
+
+          Co-Authored-By: Sentinel <sentinel@anomalist-enterprise.com>"
+          git push -u origin "$BRANCH"
+
+      - name: Open PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_BODY="🤖 Sentinel-authored fix for finding [#${{ inputs.finding_id }}](https://sentinel.whysharon.uk/findings/${{ inputs.finding_id }}).
+
+          - Type: \`${{ inputs.finding_type }}\`
+          - Lane: \`${{ inputs.lane }}\`
+          - Package: \`${{ inputs.package_name }}\`
+
+          Lane 1 = auto-merges if CI passes. Lane 2 = awaits Approve in dashboard."
+
+          PR_URL=$(gh pr create \
+            --base "$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)" \
+            --head "$BRANCH" \
+            --title "Sentinel: ${{ inputs.finding_title }}" \
+            --body "$PR_BODY" 2>&1 | grep -E "https://github.com" | tail -1)
+          echo "PR_URL=$PR_URL" >> "$GITHUB_OUTPUT"
+          PR_NUMBER=$(echo "$PR_URL" | sed -E 's|.*/pull/([0-9]+).*|\1|')
+          echo "PR_NUMBER=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Sentinel
+        if: always() && steps.pr.outputs.PR_URL != ''
+        env:
+          INGEST_SECRET: ${{ secrets.SENTINEL_INGEST_SECRET }}
+          PR_URL: ${{ steps.pr.outputs.PR_URL }}
+          PR_NUMBER: ${{ steps.pr.outputs.PR_NUMBER }}
+        run: |
+          BODY=$(jq -n \
+            --arg fid "${{ inputs.finding_id }}" \
+            --arg branch "$BRANCH" \
+            --arg pr_url "$PR_URL" \
+            --arg pr_number "$PR_NUMBER" \
+            --arg lane "${{ inputs.lane }}" \
+            '{finding_id: $fid|tonumber, branch: $branch, pr_url: $pr_url, pr_number: $pr_number|tonumber, lane: $lane}')
+          SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$INGEST_SECRET" -hex | sed 's/^.*= //')
+          curl -s -X POST -H "Content-Type: application/json" \
+            -H "X-Sentinel-Signature: $SIG" \
+            --data-binary "$BODY" \
+            "https://sentinel.whysharon.uk/api/internal/fix_created"
